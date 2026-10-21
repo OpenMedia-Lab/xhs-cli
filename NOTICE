@@ -1,0 +1,4 @@
+xhs-cli
+Endpoint contracts and creator signing are derived from jackwener/xiaohongshu-cli 0.6.4, licensed Apache-2.0: https://github.com/jackwener/xiaohongshu-cli
+Native main signing is derived from Cloxl/xhshow 0.1.9, licensed MIT; copyright (c) 2024 Cloxl. See LICENSE-xhshow.
+Current creator edit/delete contracts were inspected in publicly served Xiaohongshu creator JavaScript on 2026-10-21.
