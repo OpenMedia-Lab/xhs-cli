@@ -13,6 +13,15 @@ cargo build --release --locked -j 2
 ./target/release/xhs edit NOTE_ID --title 'Revised title'
 ```
 
+Log in with the Xiaohongshu app QR (native HTTP, no Python/browser dependency):
+
+```sh
+xhs login --qr --qr-file ./xhs-login.svg
+# QR is also the default for bare `xhs login`; default timeout is 240 seconds.
+```
+
+The terminal displays the actual platform QR; optional SVG output is a new 0600 file. A confirmed scan is finalized and checked against the confirmed account ID before replacing the session. Expiry, risk challenges, guest sessions, and timeout preserve the previous login. No cookie values are printed.
+
 Import a cookie JSON file or a Cookie header via stdin (without putting secrets in shell history):
 
 ```sh

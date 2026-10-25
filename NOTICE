@@ -2,3 +2,5 @@ xhs-cli
 Endpoint contracts and creator signing are derived from jackwener/xiaohongshu-cli 0.6.4, licensed Apache-2.0: https://github.com/jackwener/xiaohongshu-cli
 Native main signing is derived from Cloxl/xhshow 0.1.9, licensed MIT; copyright (c) 2024 Cloxl. See LICENSE-xhshow.
 Current creator edit/delete contracts were inspected in publicly served Xiaohongshu creator JavaScript on 2026-10-21.
+
+Native QR HTTP endpoint contracts and guest/confirmed-account distinctions checked against upstream xhs_cli/qr_login.py and client_mixins.py on 2026-10-25: https://github.com/jackwener/xiaohongshu-cli . New Rust code is independently implemented.

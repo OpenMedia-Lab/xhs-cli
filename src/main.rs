@@ -1,3 +1,4 @@
+mod qr_login;
 use anyhow::{Context, Result, ensure};
 use clap::{Parser, Subcommand, ValueEnum};
 use serde_json::{Value, json};
@@ -31,8 +32,16 @@ enum Cmd {
     #[command(alias = "status")]
     Me,
     Login {
-        #[arg(long, default_value = "-")]
-        cookie: String,
+        #[arg(long, conflicts_with = "qr")]
+        cookie: Option<String>,
+        /// QR is the default when --cookie is omitted.
+        #[arg(long)]
+        qr: bool,
+        /// Write the official login QR to an SVG file.
+        #[arg(long, conflicts_with = "cookie")]
+        qr_file: Option<PathBuf>,
+        #[arg(long, default_value_t = 240, conflicts_with = "cookie")]
+        timeout: u64,
     },
     Topics {
         keyword: String,
@@ -155,6 +164,9 @@ impl Client {
             .collect::<Vec<_>>()
             .join("; ");
         let mut req=self.http.request(method.parse()?,format!("{host}{path}")).header("user-agent","Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36").header("cookie",cookie).header("origin",if creator||path.starts_with("/web_api"){CREATOR}else{"https://www.xiaohongshu.com"}).header("referer",if creator||path.starts_with("/web_api"){"https://creator.xiaohongshu.com/"}else{"https://www.xiaohongshu.com/"}).header("content-type","application/json;charset=UTF-8").header("accept","application/json, text/plain, */*").header("x-s",sign).header("x-t",timestamp.to_string());
+        if path == "/api/qrcode/userinfo" {
+            req = req.header("service-tag", "webcn");
+        }
         if let Some(c) = common {
             req = req
                 .header("x-s-common", c)
@@ -278,8 +290,18 @@ fn run(cli: Cli) -> Result<Value> {
             "edit requires --title, --desc or --visibility"
         )
     }
-    if let Cmd::Login { cookie } = &cli.command {
-        return import_session(cli.cookies, cookie);
+    if let Cmd::Login {
+        cookie,
+        qr_file,
+        timeout,
+        ..
+    } = &cli.command
+    {
+        return if let Some(cookie) = cookie {
+            import_session(cli.cookies, cookie)
+        } else {
+            qr_login::login(cli.cookies, qr_file.as_deref(), *timeout)
+        };
     }
     let c = Client::new(cli.cookies)?;
     match cli.command{
@@ -303,7 +325,7 @@ fn run(cli: Cli) -> Result<Value> {
  }
 }
 fn import_session(path: Option<PathBuf>, input: &str) -> Result<Value> {
-    use std::io::{Read, Write};
+    use std::io::Read;
     let raw = if input == "-" {
         let mut s = String::new();
         std::io::stdin().read_to_string(&mut s)?;
@@ -322,6 +344,10 @@ fn import_session(path: Option<PathBuf>, input: &str) -> Result<Value> {
         }
         Value::Object(m)
     };
+    save_session(path, cookies)
+}
+fn save_session(path: Option<PathBuf>, cookies: Value) -> Result<Value> {
+    use std::io::Write;
     ensure!(
         cookies["a1"].as_str().is_some_and(|s| !s.is_empty()),
         "cookie import missing a1"
