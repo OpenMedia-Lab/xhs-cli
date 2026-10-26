@@ -738,6 +738,255 @@ pub fn video_payload(
     )
 }
 
+/// Build an update for the existing note; this function never performs I/O.
+pub fn edit_payload(
+    original: &Value,
+    note_id: &str,
+    title: Option<&str>,
+    desc: Option<&str>,
+    privacy: Option<u8>,
+    material: Option<&Value>,
+) -> Result<Value> {
+    let mut payload = crate::merge_edit(original, title, desc, privacy)?;
+    ensure!(
+        payload["common"]["note_id"] == note_id,
+        "creator detail returned a different note ID"
+    );
+    if payload["common"]["type"] != "video" {
+        ensure!(
+            material.is_none(),
+            "video replacement requires an existing video note"
+        );
+        return Ok(payload);
+    }
+    payload["common"]["privacy_info"]["op_type"] = json!(1);
+    let common = &payload["common"];
+    let title = common["title"].as_str().context("original title missing")?;
+    let desc = common["desc"]
+        .as_str()
+        .context("original description missing")?;
+    ensure!(
+        title.chars().count() <= 20 && desc.chars().count() <= 1000,
+        "video title/body exceeds creator length limits (20/1000)"
+    );
+    ensure!(
+        !desc.contains("\\n"),
+        "body contains literal \\n; use --desc-file for actual newlines"
+    );
+    let previous_video = payload["video_info"].clone();
+    let previous_cover = previous_video
+        .get("cover")
+        .or_else(|| original.get("cover"))
+        .context("original explicit video cover missing")?;
+    let current_material;
+    let media = if let Some(material) = material {
+        digest_field(material, "md5", 32)?;
+        digest_field(&material["cover"], "md5", 32)?;
+        digest_field(&material["cover"], "sha256", 64)?;
+        ensure!(
+            material["cover"]["bytes"]
+                .as_u64()
+                .is_some_and(|n| n > 0 && n <= 32 * 1024 * 1024),
+            "replacement requires the explicit uploaded cover byte count"
+        );
+        material
+    } else {
+        let cover_id = previous_cover
+            .get("file_id")
+            .or_else(|| previous_cover.get("fileid"))
+            .context("original cover file ID missing")?;
+        current_material = json!({
+            "upload_complete":true,
+            "file_id":previous_video.get("file_id").or_else(||previous_video.get("fileid")),
+            "video_id":previous_video.get("video_id").or_else(||previous_video["media_v2"].get("video_id")),
+            "width":previous_video.get("format_width").or_else(||previous_video.get("width")),
+            "height":previous_video.get("format_height").or_else(||previous_video.get("height")),
+            "duration":previous_video.get("duration").unwrap_or(&previous_video["segments"]["items"][0]["duration"]),
+            "cover":{"file_id":cover_id,"width":previous_cover["width"],"height":previous_cover["height"]}
+        });
+        &current_material
+    };
+    // Reuse the official native media builder. Its placeholder common object
+    // is discarded; all original common fields and full privacy remain intact.
+    let mut native = video_payload("", "", 0, &[], media, &json!({}))?["video_info"].clone();
+    if material.is_none() {
+        for key in [
+            "timelines",
+            "chapters",
+            "summary",
+            "chapter_sync_text",
+            "segments",
+            "composite_metadata",
+        ] {
+            if let Some(value) = previous_video.get(key) {
+                native[key] = value.clone();
+            }
+        }
+        native["cover"]["frame"]["is_upload"] = json!(false);
+        for key in [
+            "stickers",
+            "fonts",
+            "cover_template_id",
+            "frame",
+            "extra_info_json",
+        ] {
+            if let Some(value) = previous_cover.get(key) {
+                native["cover"][key] = value.clone();
+            }
+        }
+    }
+    let mut video = previous_video
+        .as_object()
+        .context("original video metadata missing")?
+        .clone();
+    // Creator response-only fields refer to the old source and must not be
+    // submitted beside a replacement. Preserve unrecognized extension fields.
+    for key in [
+        "width",
+        "height",
+        "duration",
+        "media_v2",
+        "video_id",
+        "url",
+        "url_info_list",
+        "first_frame",
+        "thumbnail",
+        "thumbnail_dim",
+        "id",
+        "preload_size",
+        "played_count",
+        "vmaf",
+        "can_super_resolution",
+        "video_mark_list",
+        "frame_ts",
+        "is_upload",
+        "is_user_select",
+    ] {
+        video.remove(key);
+    }
+    let mut cover = previous_cover
+        .as_object()
+        .context("original cover metadata missing")?
+        .clone();
+    for key in ["original", "url", "trace_id"] {
+        cover.remove(key);
+    }
+    for (key, value) in native["cover"].as_object().unwrap() {
+        cover.insert(key.clone(), value.clone());
+    }
+    native["cover"] = json!(cover);
+    for (key, value) in native.as_object().unwrap() {
+        video.insert(key.clone(), value.clone());
+    }
+    video.insert("replaced_video".into(), json!(material.is_some()));
+    payload["video_info"] = json!(video);
+    payload["image_info"] = Value::Null;
+    Ok(payload)
+}
+
+pub const UPDATE_NOTE_ENDPOINT: &str = "/web_api/sns/capa/postgw/note/update";
+
+pub fn edit_journal(
+    note_id: &str,
+    original: &Value,
+    payload: &Value,
+    material: Option<&Value>,
+    created_at_ms: u64,
+) -> Result<Value> {
+    let original_id = original
+        .get("id")
+        .or_else(|| original["common"].get("note_id"))
+        .and_then(Value::as_str)
+        .context("original note ID missing")?;
+    ensure!(
+        !note_id.is_empty() && original_id == note_id && payload["common"]["note_id"] == note_id,
+        "edit original and payload must retain the target note ID"
+    );
+    let mut journal = json!({"operation":"edit","method":"PUT","endpoint":UPDATE_NOTE_ENDPOINT,"note_id":note_id,"status":"submitting","automatic_retry":false,"created_at_ms":created_at_ms,"payload":payload,"original":original});
+    if let Some(material) = material {
+        journal["material"] = material.clone();
+    }
+    Ok(journal)
+}
+
+pub fn submit_edit_once(
+    path: &std::path::Path,
+    mut journal: Value,
+    send: impl FnOnce(&Value) -> Result<Value>,
+) -> Result<Value> {
+    ensure!(
+        journal["operation"] == "edit"
+            && journal["method"] == "PUT"
+            && journal["endpoint"] == UPDATE_NOTE_ENDPOINT,
+        "single-edit journal must describe the original-ID PUT endpoint"
+    );
+    reconciliation_note_id(&journal, None)?;
+    let receipt = Receipt::create(path, &journal)?;
+    match send(&journal["payload"]) {
+        Ok(result) => {
+            journal["result"] = result;
+            let target = journal["note_id"]
+                .as_str()
+                .context("edit target ID missing")?;
+            if ["id", "note_id", "noteId"].iter().any(|key| {
+                journal["result"]
+                    .get(*key)
+                    .is_some_and(|value| !value.is_null() && value.as_str() != Some(target))
+            }) {
+                journal["status"] = json!("unknown");
+                journal["error"] = json!(
+                    "edit response returned a different note ID; only reconcile the original note, do not resend"
+                );
+                receipt.update(&journal)?;
+                bail!(
+                    "edit response returned a different note ID; only reconcile the original note with check-publish --receipt, do not resend"
+                );
+            }
+            journal["status"] = json!("accepted_unverified");
+            receipt.update(&journal)?;
+            Ok(journal)
+        }
+        Err(error) => {
+            journal["status"] = json!("unknown");
+            journal["error"] = json!(format!("{error:#}"));
+            receipt.update(&journal)?;
+            Err(error.context("edit outcome may be unknown; do not resend, reconcile the original note with check-publish --receipt"))
+        }
+    }
+}
+
+pub fn reconciliation_note_id(journal: &Value, explicit: Option<&str>) -> Result<Option<String>> {
+    if journal["operation"] == "edit" {
+        let id = journal["note_id"]
+            .as_str()
+            .filter(|s| !s.is_empty())
+            .context("edit journal target ID missing")?;
+        let original = &journal["original"];
+        let original_id = original
+            .get("id")
+            .or_else(|| original["common"].get("note_id"))
+            .and_then(Value::as_str)
+            .context("edit journal original note ID missing")?;
+        ensure!(
+            original_id == id,
+            "edit journal target differs from the original note ID"
+        );
+        ensure!(
+            journal["payload"]["common"]["note_id"] == id,
+            "edit journal payload changed the original note ID"
+        );
+        ensure!(
+            explicit.is_none_or(|note| note == id),
+            "edit reconciliation must use the original note ID"
+        );
+        return Ok(Some(id.to_owned()));
+    }
+    Ok(explicit
+        .map(str::to_owned)
+        .or_else(|| journal["result"]["id"].as_str().map(str::to_owned))
+        .or_else(|| journal["result"]["note_id"].as_str().map(str::to_owned)))
+}
+
 /// A successful HTTP request alone does not establish the resulting visibility or content.
 pub fn verify_readback(payload: &Value, detail: &Value) -> Result<Value> {
     let common = &payload["common"];

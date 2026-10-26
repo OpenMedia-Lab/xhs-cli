@@ -4,8 +4,7 @@ use clap::{Parser, Subcommand, ValueEnum};
 use serde_json::{Value, json};
 use std::{fs, path::PathBuf, time::Duration};
 use xhs_cli::{
-    bind_document, creator_sign, document_info, main_sign, merge_edit, now, prepare_images,
-    replace_images,
+    bind_document, creator_sign, document_info, main_sign, now, prepare_images, replace_images,
 };
 #[derive(Parser)]
 #[command(version, about = "Native Rust Xiaohongshu client")]
@@ -119,7 +118,7 @@ enum Cmd {
         #[arg(long)]
         video_info: PathBuf,
     },
-    /// Reconcile a publication receipt with creator detail; never republishes.
+    /// Reconcile a publication or edit receipt with creator detail; never mutates notes.
     CheckPublish {
         #[arg(long)]
         receipt: PathBuf,
@@ -182,6 +181,18 @@ enum Cmd {
         title: Option<String>,
         #[arg(long, visible_alias = "body")]
         desc: Option<String>,
+        /// UTF-8 replacement body, preserving actual newlines.
+        #[arg(long, conflicts_with = "desc")]
+        desc_file: Option<PathBuf>,
+        /// Reusable uploaded video and explicit cover receipt; replaces this note's video.
+        #[arg(long, conflicts_with = "image")]
+        video_info: Option<PathBuf>,
+        /// Preview the exact original-ID PUT payload using read-only requests.
+        #[arg(long, conflicts_with = "image")]
+        dry_run: bool,
+        /// New durable single-PUT journal; required for non-preview video replacement.
+        #[arg(long)]
+        receipt: Option<PathBuf>,
         #[arg(long)]
         visibility: Option<Visibility>,
         #[arg(long,visible_alias="images",num_args=1..)]
@@ -640,6 +651,10 @@ fn run(cli: Cli) -> Result<Value> {
     if let Cmd::Edit {
         title,
         desc,
+        desc_file,
+        video_info,
+        dry_run,
+        receipt,
         visibility,
         image,
         attachment,
@@ -649,11 +664,23 @@ fn run(cli: Cli) -> Result<Value> {
         ensure!(
             title.is_some()
                 || desc.is_some()
+                || desc_file.is_some()
+                || video_info.is_some()
                 || visibility.is_some()
                 || !image.is_empty()
                 || attachment.is_some(),
-            "edit requires --title, --desc, --visibility, --image or --attachment"
-        )
+            "edit requires --title, --desc, --desc-file, --video-info, --visibility, --image or --attachment"
+        );
+        ensure!(
+            *dry_run || video_info.is_none() || receipt.is_some(),
+            "video edit requires --receipt; use --dry-run to preview without updating"
+        );
+        if !dry_run && let Some(receipt) = receipt {
+            ensure!(
+                !receipt.exists(),
+                "edit receipt already exists; use check-publish before retrying"
+            );
+        }
     }
     if let Cmd::Login {
         cookie,
@@ -716,8 +743,9 @@ fn run(cli: Cli) -> Result<Value> {
  Cmd::VideoStatus{video_info}=>{let media:Value=serde_json::from_slice(&fs::read(video_info)?)?;c.video_status(&media)},
  Cmd::CheckPublish{receipt,note}=>{
      let journal:Value=serde_json::from_slice(&fs::read(&receipt)?)?;
-     let id=note.or_else(||journal["result"]["id"].as_str().map(str::to_owned)).or_else(||journal["result"]["note_id"].as_str().map(str::to_owned));
-     if let Some(id)=id {let id=note_ref(&id)?.0;let mut detail=c.detail(&id)?;ensure!(detail["id"]==id,"creator detail returned a different note ID");let binds=c.request("GET",&query("/web_api/sns/capa/postgw/note/business_bind",&[("note_id",id.clone())]),None,true)?;detail["business_binds"]=json!(binds.to_string());xhs_cli::publish::verify_readback_with_material(&journal["payload"],&detail,journal.get("material"),xhs_cli::publish::fetch_original_cover)} else {
+     let explicit=note.map(|note|note_ref(&note).map(|(id,_)|id)).transpose()?;
+     let id=xhs_cli::publish::reconciliation_note_id(&journal,explicit.as_deref())?;
+     if let Some(id)=id {let id=note_ref(&id)?.0;let mut detail=c.detail(&id)?;ensure!(detail["id"]==id,"creator detail returned a different note ID");let binds=c.request("GET",&query("/web_api/sns/capa/postgw/note/business_bind",&[("note_id",id.clone())]),None,true)?;detail["business_binds"]=json!(binds.to_string());let mut report=xhs_cli::publish::verify_readback_with_material(&journal["payload"],&detail,journal.get("material"),xhs_cli::publish::fetch_original_cover)?;if journal["operation"]=="edit" {report["operation"]=json!("edit");report["original_note_id"]=json!(id);}Ok(report)} else {
          let list=c.request("GET","/api/galaxy/v2/creator/note/user/posted?tab=0&page=0",None,true)?;
          let title=&journal["payload"]["common"]["title"];
          let candidates=xhs_cli::publish::publication_candidates(&list,title.as_str().context("journal title missing")?)?;
@@ -760,7 +788,27 @@ fn run(cli: Cli) -> Result<Value> {
  c.request("POST","/web_api/sns/v2/note",Some(json!({"common":{"type":"normal","title":title,"note_id":"","desc":desc,"source":"{\"type\":\"web\",\"ids\":\"\",\"extraInfo\":\"{\\\"subType\\\":\\\"official\\\"}\"}","business_binds":binds.to_string(),"ats":[],"hash_tag":topics,"post_loc":{},"privacy_info":{"op_type":1,"type":privacy}},"image_info":{"images":images},"video_info":null})),false)
  }
  },
- Cmd::Edit{note,title,desc,visibility,image,attachment}=>{let id=note_ref(&note)?.0;let mut original=c.detail(&id)?;let mut bindings=c.request("GET",&query("/web_api/sns/capa/postgw/note/business_bind",&[("note_id",id.clone())]),None,true)?;if let Some(path)=attachment{let document:Value=serde_json::from_slice(&fs::read(path)?)?;bind_document(&mut bindings,&document)?;}original["business_binds"]=json!(bindings.to_string());let mut payload=merge_edit(&original,title.as_deref(),desc.as_deref(),visibility.map(Visibility::code))?;if !image.is_empty(){let images=prepare_images(&image, |path, bytes| c.upload(path, bytes))?;replace_images(&mut payload,&images)?;}ensure!(payload["common"]["note_id"]==id,"detail returned a different note ID");c.request("PUT","/web_api/sns/capa/postgw/note/update",Some(payload),true)},
+ Cmd::Edit{note,title,desc,desc_file,video_info,dry_run,receipt,visibility,image,attachment}=>{
+     let id=note_ref(&note)?.0;
+     let desc=if let Some(path)=desc_file {Some(fs::read_to_string(path).context("read UTF-8 description file")?)} else {desc};
+     let material=video_info.map(|path|->Result<Value>{Ok(serde_json::from_slice(&fs::read(path)?)?)}).transpose()?;
+     let mut original=c.detail(&id)?;
+     ensure!(original["id"]==id,"creator detail returned a different note ID");
+     let mut bindings=c.request("GET",&query("/web_api/sns/capa/postgw/note/business_bind",&[("note_id",id.clone())]),None,true)?;
+     original["business_binds"]=json!(bindings.to_string());
+     let before=original.clone();
+     if let Some(path)=attachment {let document:Value=serde_json::from_slice(&fs::read(path)?)?;bind_document(&mut bindings,&document)?;original["business_binds"]=json!(bindings.to_string());}
+     let mut payload=xhs_cli::publish::edit_payload(&original,&id,title.as_deref(),desc.as_deref(),visibility.map(Visibility::code),material.as_ref())?;
+     if !image.is_empty(){let images=prepare_images(&image,|path,bytes|c.upload(path,bytes))?;replace_images(&mut payload,&images)?;}
+     if dry_run {return Ok(json!({"dry_run":true,"creates_note":false,"updates_note":false,"operation":"edit","note_id":id,"method":"PUT","endpoint":xhs_cli::publish::UPDATE_NOTE_ENDPOINT,"payload":payload}));}
+     if let Some(material)=&material {let status=c.video_status(material)?;ensure!(status["has_first_frame"]==true || status["hasFirstFrame"]==true,"replacement video processing is not ready; query video-status before editing");}
+     if let Some(receipt)=receipt {
+         let journal=xhs_cli::publish::edit_journal(&id,&before,&payload,material.as_ref(),now())?;
+         xhs_cli::publish::submit_edit_once(&receipt,journal,|payload|c.request("PUT",xhs_cli::publish::UPDATE_NOTE_ENDPOINT,Some(payload.clone()),true))
+     } else {
+         c.request("PUT",xhs_cli::publish::UPDATE_NOTE_ENDPOINT,Some(payload),true)
+     }
+ },
  Cmd::Delete{note}=>c.request("POST","/web_api/sns/capa/postgw/note/delete",Some(json!({"note_id":note_ref(&note)?.0})),true),
  }
 }

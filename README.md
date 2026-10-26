@@ -110,3 +110,35 @@ If the request fails or its response is lost, the journal stays `unknown`; do no
 For a one-step upload and publication, `publish --video final.mp4 --cover cover.png ... --receipt publication.json` retains material metadata in `publication.json.video.json`. Reusing `upload-video` receipts is preferred when reviewing or publishing multiple attempts.
 
 Protocol and live-validation limits are recorded in [docs/video-publishing.md](docs/video-publishing.md) and [VALIDATION.md](VALIDATION.md). Three explicitly approved public video notes were published once each and verified through creator readback and authenticated public-feed reads. Campaign task credit and rewards remain unverified.
+
+### Updating an existing video
+
+`edit --video-info` replaces the media of the existing video note through the
+creator's PUT update endpoint. It preserves that note ID and its omitted title,
+body, topics, activity, content declaration and privacy. Upload the replacement
+MP4 and explicit cover separately, then inspect a read-only preview:
+
+```sh
+xhs edit NOTE_ID --video-info replacement-material.json --desc-file revised-body.txt --dry-run
+xhs edit NOTE_ID --video-info replacement-material.json --desc-file revised-body.txt --receipt edit.json
+xhs check-publish --receipt edit.json
+```
+
+Review the complete replacement and copy before the update. Non-preview video
+replacement requires a new private journal and a ready first frame. The update is
+sent once, with `video_info.replaced_video=true`; an unknown response requires
+reconciliation of the original ID. The journal retains the original detail and
+exact PUT payload. Reusing a journal blocks another send; choosing another note
+ID for its readback is rejected. Body-only video edits preserve the current media
+and set `replaced_video=false`; passing `--receipt` enables the same journal
+protection. Existing edit commands without new flags remain compatible.
+
+Public readability and public privacy do not establish recommendation or search
+eligibility. Read creator-list punishment/advice fields when investigating a
+restriction. Platform policy applies to body text, covers, onscreen text and
+narration; editing content does not by itself establish that a restriction has
+been lifted. Three explicitly approved original-ID video replacements passed
+live PUT, media/cover/copy readback and authenticated public-feed reads. In the
+observed restricted note, the punishment fields disappeared and creator-list
+status returned to the other public notes' state; this is a timed observation,
+not a guarantee of future recommendation volume.

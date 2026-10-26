@@ -107,6 +107,48 @@ The campaign component is independent of those topic entries. The official publi
 
 This relation is inside `common.business_binds` → `optionRelationList`; that outer business value is itself a JSON string. Dates above are one observed creator response, not a permanent campaign rule. The implementation fetches current data when `--activity` is supplied. Displaying a campaign in this API and transmitting its relation do not prove final acceptance or eligibility.
 
+## Updating the original note
+
+The current official editor supports replacing media while retaining `noteId`.
+Uploading a replacement sets `isReplaceVideo`; `constructData` serializes it as
+`video_info.replaced_video=true` and retains `common.note_id`. The update method is
+`PUT /web_api/sns/capa/postgw/note/update`, not the new-note POST. This is an
+observed editor contract; individual accounts can still encounter permission or
+review errors.
+
+`edit --video-info` accepts a completed reusable material receipt with the new
+video and explicit cover. It preserves omitted common fields, native topics,
+business bindings, complete privacy and unknown extension fields. Known old-source
+stream URLs, derived media metadata and cover URLs are removed before the native
+replacement fields are applied. A body-only video edit retains the current
+media/cover/chapters and sets `replaced_video=false`.
+
+`--desc-file` preserves UTF-8 body line breaks; it conflicts with `--desc`.
+`--dry-run` only reads creator detail/bindings and prints the exact original-ID
+payload. It cannot be combined with an image upload. Real video replacement
+requires a new `--receipt`; a receipt supplied for another edit also enables the
+durable single-PUT path. Legacy edit calls without new flags remain compatible.
+
+The journal saves original detail, target ID, exact payload and replacement
+material before the single PUT. The original ID, target ID and payload ID must
+agree. Explicit different IDs in a response produce an unknown outcome; recovery
+always reads the original ID, never title candidates or another submission.
+`check-publish` verifies the changed media/copy on that ID without rewriting the
+journal or sending an update. Contract tests, three cached real-note previews and
+three actual explicitly approved original-ID replacements passed. Each real
+replacement used one PUT and retained its original ID, topics, activity, public
+visibility and native declaration; the changed video/cover fingerprints and body
+were read back, followed by an authenticated public-feed read.
+
+An observed note remained enabled/public and readable after recommendation/search
+restriction. Its creator-list entry exposed `punish_reason` and `modify_advice`
+while detail did not. Inspect both surfaces and report timestamps; an accepted
+edit or a readable public feed is not proof of lifted moderation or activity
+credit. In that case the notice specifically cited an outbound article URL. After
+the approved correction, its list status changed from `tab_status=3/ref_tip=2`
+to `1/0` and punishment/advice fields were absent. This reports the observed
+state after editing; later distribution and activity credit remain unverified.
+
 ## Evidence and remaining limits
 
 - Preserved baseline: 33 tests passed before the video changes, including existing document, portrait-image, share-link and MP4-download work.

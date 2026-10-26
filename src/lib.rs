@@ -39,6 +39,7 @@ pub fn merge_edit(
             "metadata",
             "source",
             "business_binds",
+            "biz_relations",
             "capa_version",
         ] {
             if let Some(v) = original.get(key) {
