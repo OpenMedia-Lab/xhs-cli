@@ -1,0 +1,203 @@
+{
+  "items": [
+    {
+      "id": "6adb6000000000003301beee",
+      "model_type": "note",
+      "note_card": {
+        "note_id": "6adb6000000000003301beee",
+        "type": "video",
+        "title": "如何用 agent 做视频 (无故下架之重发版)",
+        "video": {
+          "media": {
+            "video_id": 138163932116494399,
+            "video": {
+              "drm_type": 0,
+              "stream_types": [
+                258,
+                3090,
+                3091,
+                3103
+              ],
+              "biz_name": 110,
+              "biz_id": "282279132040904430",
+              "duration": 381,
+              "md5": "8d43a3bee4a4a87c5da2a19f0d7e1e7b",
+              "hdr_type": 0
+            },
+            "stream": {
+              "EF4": [
+                {
+                  "video_duration": 380800,
+                  "audio_codec": "aac",
+                  "audio_bitrate": 56003,
+                  "audio_channels": 2,
+                  "ssim": 0,
+                  "quality_type": "HD",
+                  "stream_type": 258,
+                  "stream_desc": "hd_258",
+                  "default_stream": 0,
+                  "format": "mp4",
+                  "fps": 29,
+                  "hdr_type": 0,
+                  "vmaf": -1,
+                  "psnr": 0,
+                  "size": 29504410,
+                  "volume": 0,
+                  "video_codec": "EF4",
+                  "audio_duration": 380819,
+                  "master_url": "http://sns-video-v2.xhscdn.com/stream/1/110/258/01eadb5d3e93283f01037001a168ef5d94_258.mp4",
+                  "weight": 59,
+                  "width": 720,
+                  "avg_bitrate": 619807,
+                  "video_bitrate": 557551,
+                  "rotate": 0,
+                  "backup_urls": [
+                    "http://sns-bak-v1.xhscdn.com/stream/1/110/258/01eadb5d3e93283f01037001a168ef5d94_258.mp4",
+                    "http://sns-bak-v6.xhscdn.com/stream/1/110/258/01eadb5d3e93283f01037001a168ef5d94_258.mp4"
+                  ],
+                  "height": 960,
+                  "duration": 380820
+                }
+              ],
+              "EF6": [],
+              "EF5": [
+                {
+                  "fps": 30,
+                  "video_codec": "EF5",
+                  "video_bitrate": 337905,
+                  "stream_desc": "WEB_720P_3090",
+                  "default_stream": 1,
+                  "duration": 380800,
+                  "size": 16084283,
+                  "audio_channels": 0,
+                  "avg_bitrate": 337905,
+                  "video_duration": 380800,
+                  "audio_duration": 0,
+                  "rotate": 0,
+                  "hdr_type": 0,
+                  "vmaf": -1,
+                  "quality_type": "HD",
+                  "format": "fmp4",
+                  "width": 720,
+                  "height": 960,
+                  "volume": 0,
+                  "backup_urls": [
+                    "http://sns-bak-v1.xhscdn.com/stream/1/110/3090/01eadb5d3e93283f01037001a168f62b50_3090.m4s",
+                    "http://sns-bak-v6.xhscdn.com/stream/1/110/3090/01eadb5d3e93283f01037001a168f62b50_3090.m4s"
+                  ],
+                  "psnr": 50.487998962402344,
+                  "ssim": 0,
+                  "stream_type": 3090,
+                  "audio_bitrate": 0,
+                  "master_url": "http://sns-video-v2.xhscdn.com/stream/1/110/3090/01eadb5d3e93283f01037001a168f62b50_3090.m4s",
+                  "weight": 62
+                },
+                {
+                  "audio_duration": 0,
+                  "rotate": 0,
+                  "vmaf": -1,
+                  "ssim": 0,
+                  "stream_type": 3091,
+                  "height": 1440,
+                  "video_bitrate": 320855,
+                  "backup_urls": [
+                    "http://sns-bak-v1.xhscdn.com/stream/1/110/3091/01eadb5d3e93283f01037001a168fa14f6_3091.m4s",
+                    "http://sns-bak-v6.xhscdn.com/stream/1/110/3091/01eadb5d3e93283f01037001a168fa14f6_3091.m4s"
+                  ],
+                  "weight": 70,
+                  "quality_type": "FHD",
+                  "stream_desc": "FMP4_1080P_3091_web",
+                  "size": 15272715,
+                  "video_duration": 380800,
+                  "audio_bitrate": 0,
+                  "audio_channels": 0,
+                  "master_url": "http://sns-video-v2.xhscdn.com/stream/1/110/3091/01eadb5d3e93283f01037001a168fa14f6_3091.m4s",
+                  "hdr_type": 0,
+                  "format": "fmp4",
+                  "duration": 380800,
+                  "volume": 0,
+                  "video_codec": "EF5",
+                  "psnr": 48.93899917602539,
+                  "default_stream": 0,
+                  "width": 1080,
+                  "avg_bitrate": 320855,
+                  "fps": 30
+                },
+                {
+                  "stream_type": 3103,
+                  "stream_desc": "FMP4_2K4K_3103_web",
+                  "default_stream": 0,
+                  "width": 1440,
+                  "video_codec": "EF5",
+                  "video_duration": 380800,
+                  "format": "fmp4",
+                  "size": 33965567,
+                  "avg_bitrate": 713562,
+                  "fps": 30,
+                  "master_url": "http://sns-video-v2.xhscdn.com/stream/79/110/3103/01eadb5d3e93283f4f037001a169f843cd_3103.m4s",
+                  "vmaf": -1,
+                  "weight": 90,
+                  "quality_type": "2K",
+                  "height": 1920,
+                  "duration": 380800,
+                  "volume": 0,
+                  "audio_bitrate": 0,
+                  "audio_channels": 0,
+                  "hdr_type": 0,
+                  "video_bitrate": 713562,
+                  "audio_duration": 0,
+                  "rotate": 0,
+                  "backup_urls": [
+                    "http://sns-bak-v1.xhscdn.com/stream/79/110/3103/01eadb5d3e93283f4f037001a169f843cd_3103.m4s",
+                    "http://sns-bak-v6.xhscdn.com/stream/79/110/3103/01eadb5d3e93283f4f037001a169f843cd_3103.m4s"
+                  ],
+                  "psnr": 51.347999572753906,
+                  "ssim": 0
+                }
+              ],
+              "EF7": []
+            }
+          },
+          "image": {
+            "thumbnail_fileid": "frame/110/0/01eadb5d3e93283f001000000001a168ef2b8c_0.webp"
+          },
+          "capa": {
+            "duration": 380
+          },
+          "consumer": {
+            "chapters": [
+              {
+                "text": "引言",
+                "time": 640
+              },
+              {
+                "text": "工具介绍",
+                "time": 39840
+              },
+              {
+                "text": "定目标",
+                "time": 92450
+              },
+              {
+                "text": "声音生成",
+                "time": 121690
+              },
+              {
+                "text": "画面生成",
+                "time": 191530
+              },
+              {
+                "text": "最终制作",
+                "time": 238110
+              },
+              {
+                "text": "审美阶段",
+                "time": 286760
+              }
+            ]
+          }
+        }
+      }
+    }
+  ]
+}

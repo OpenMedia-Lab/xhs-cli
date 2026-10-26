@@ -1,4 +1,6 @@
 //! Native request signing. See NOTICE for upstream provenance.
+pub mod media;
+pub mod publish;
 use aes::cipher::{BlockEncryptMut, KeyIvInit, block_padding::Pkcs7};
 use anyhow::{Result, ensure};
 use base64::{Engine, engine::general_purpose::STANDARD};
@@ -242,4 +244,130 @@ pub fn select_topic(response: &Value, name: &str) -> Result<Value> {
         .find(|v| v["name"] == name || v["id"] == name)
         .map(|v| json!({"id":v["id"],"name":v["name"],"type":"topic"}))
         .ok_or_else(|| anyhow::anyhow!("topic not found with exact name or ID"))
+}
+
+/// Validate the whole batch before uploading any bytes, retaining the exact bytes
+/// whose dimensions were inspected so file changes cannot desynchronize metadata.
+pub fn prepare_images(
+    paths: &[std::path::PathBuf],
+    mut upload: impl FnMut(&std::path::Path, &[u8]) -> Result<String>,
+) -> Result<Vec<Value>> {
+    use anyhow::Context;
+    let prepared = paths
+        .iter()
+        .map(|path| {
+            let bytes =
+                std::fs::read(path).with_context(|| format!("read image {}", path.display()))?;
+            let size = imagesize::blob_size(&bytes)
+                .with_context(|| format!("read image dimensions {}", path.display()))?;
+            ensure!(
+                size.width > 0 && size.height > 0,
+                "invalid image dimensions: {}",
+                path.display()
+            );
+            Ok((path, bytes, size))
+        })
+        .collect::<Result<Vec<_>>>()?;
+    prepared
+        .into_iter()
+        .map(|(path, bytes, size)| {
+            let id = upload(path, &bytes)?;
+            Ok(
+                json!({"file_id": id, "width": size.width, "height": size.height,
+                  "metadata": {"source": -1}}),
+            )
+        })
+        .collect()
+}
+
+/// Validate a document before requesting upload credentials. Creator web accepts
+/// one PDF/Word/PowerPoint document, at most 100 MiB (checked 2026-10-25).
+pub fn document_info(name: &str, bytes: &[u8]) -> Result<Value> {
+    ensure!(
+        !bytes.is_empty() && bytes.len() <= 100 * 1024 * 1024,
+        "document must be nonempty and at most 100 MiB"
+    );
+    let ext = std::path::Path::new(name)
+        .extension()
+        .and_then(|s| s.to_str())
+        .unwrap_or("")
+        .to_ascii_lowercase();
+    ensure!(
+        matches!(ext.as_str(), "pdf" | "doc" | "docx" | "ppt" | "pptx"),
+        "supported documents: pdf, doc, docx, ppt, pptx; installers are not documents"
+    );
+    let valid = match ext.as_str() {
+        "pdf" => bytes.starts_with(b"%PDF-"),
+        "doc" | "ppt" => bytes.starts_with(&[0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1]),
+        _ => bytes.starts_with(b"PK\x03\x04"),
+    };
+    ensure!(
+        valid,
+        "document extension does not match its file signature"
+    );
+    // The web component truncates its display label at 28 weighted characters.
+    let width = |c: char| if c as u32 >= 0x2e80 { 2 } else { 1 };
+    let show = if name.chars().map(width).sum::<usize>() <= 28 {
+        name.to_owned()
+    } else {
+        let mut n = 0;
+        let mut head = String::new();
+        for c in name.chars() {
+            if n + width(c) > 12 {
+                break;
+            }
+            head.push(c);
+            n += width(c)
+        }
+        let mut n = 0;
+        let mut tail = Vec::new();
+        for c in name.chars().rev() {
+            if n + width(c) > 13 {
+                break;
+            }
+            tail.push(c);
+            n += width(c)
+        }
+        format!("{head}...{}", tail.into_iter().rev().collect::<String>())
+    };
+    Ok(
+        json!({"docName":name,"docShowName":show,"docType":ext.to_uppercase(),"docSize":bytes.len()}),
+    )
+}
+
+/// Replace the attachment relation while preserving unrelated business binds.
+pub fn bind_document(bindings: &mut Value, document: &Value) -> Result<()> {
+    ensure!(bindings.is_object(), "business binds must be an object");
+    for key in ["docId", "fileId", "docName", "docShowName", "docType"] {
+        ensure!(
+            document[key].as_str().is_some_and(|s| !s.is_empty()),
+            "document missing {key}"
+        );
+    }
+    ensure!(
+        document["docSize"]
+            .as_u64()
+            .is_some_and(|s| s > 0 && s <= 100 * 1024 * 1024),
+        "invalid document size"
+    );
+    ensure!(
+        matches!(
+            document["docType"].as_str(),
+            Some("PDF" | "DOC" | "DOCX" | "PPT" | "PPTX")
+        ),
+        "unsupported document type"
+    );
+    ensure!(
+        bindings
+            .get("optionRelationList")
+            .is_none_or(Value::is_array),
+        "invalid existing optionRelationList"
+    );
+    if bindings.get("optionRelationList").is_none() {
+        bindings["optionRelationList"] = json!([]);
+    }
+    let list = bindings["optionRelationList"].as_array_mut().unwrap();
+    list.retain(|v| v["type"] != "ATTACHMENT");
+    list.push(json!({"type":"ATTACHMENT","relationList":[{"bizType":"ATTACHMENT","bizId":document["docId"],"extraInfo":json!([document]).to_string()}]}));
+    Ok(())
 }

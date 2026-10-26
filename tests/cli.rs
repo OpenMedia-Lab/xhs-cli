@@ -9,16 +9,31 @@ fn cli_exposes_real_operations() {
     for command in [
         "search",
         "read",
+        "media",
         "user",
         "user-notes",
         "me",
         "my-notes",
+        "bindings",
+        "upload-document",
         "publish",
         "edit",
         "delete",
     ] {
         assert!(s.contains(command), "missing {command}");
     }
+}
+
+#[test]
+fn media_requires_explicit_output_for_download_and_accepts_xsec_token() {
+    let output = Command::new(env!("CARGO_BIN_EXE_xhs"))
+        .args(["media", "--help"])
+        .output()
+        .unwrap();
+    assert!(output.status.success());
+    let help = String::from_utf8(output.stdout).unwrap();
+    assert!(help.contains("--output"));
+    assert!(help.contains("--token"));
 }
 #[test]
 fn publish_requires_media() {
@@ -149,4 +164,42 @@ fn failed_atomic_import_preserves_existing_session() {
         "import must require a same-directory temporary file"
     );
     assert_eq!(content, b"{\"a1\":\"original\"}");
+}
+
+#[test]
+fn attachment_surface_is_explicit_and_available_for_publish_and_edit() {
+    for command in ["publish", "edit"] {
+        let out = Command::new(env!("CARGO_BIN_EXE_xhs"))
+            .args([command, "--help"])
+            .output()
+            .unwrap();
+        assert!(out.status.success());
+        assert!(
+            String::from_utf8(out.stdout)
+                .unwrap()
+                .contains("--attachment")
+        );
+    }
+    let out = Command::new(env!("CARGO_BIN_EXE_xhs"))
+        .args(["upload-document", "--help"])
+        .output()
+        .unwrap();
+    assert!(out.status.success());
+    let out = Command::new(env!("CARGO_BIN_EXE_xhs"))
+        .args([
+            "--json",
+            "--cookies",
+            "/not-present-xhs-test",
+            "edit",
+            "abc",
+            "--attachment",
+            "doc.json",
+        ])
+        .output()
+        .unwrap();
+    let err = String::from_utf8(out.stderr).unwrap();
+    assert!(
+        !err.contains("edit requires"),
+        "attachment-only edits must pass the patch gate"
+    );
 }
